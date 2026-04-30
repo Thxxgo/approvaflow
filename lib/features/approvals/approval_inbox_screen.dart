@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../app/app_colors.dart';
-import '../requests/request_list_screen.dart';
+import '../requests/request_service.dart';
+import '../auth/auth_service.dart';
 
 class ApprovalInboxScreen extends StatefulWidget {
   const ApprovalInboxScreen({super.key});
@@ -11,30 +12,8 @@ class ApprovalInboxScreen extends StatefulWidget {
 }
 
 class _ApprovalInboxScreenState extends State<ApprovalInboxScreen> {
-  // Datos de prueba mientras conectamos Firebase
-  final List<Request> _pending = [
-    Request(
-      id: '1',
-      title: 'Solicitud de viaje',
-      description: 'Tiquetes para reunión en Bogotá el 28 de abril',
-      status: RequestStatus.pendiente,
-      createdAt: DateTime.now().subtract(const Duration(hours: 1)),
-    ),
-    Request(
-      id: '2',
-      title: 'Contrato proveedor',
-      description: 'Contrato con proveedor de insumos Q2',
-      status: RequestStatus.pendiente,
-      createdAt: DateTime.now().subtract(const Duration(hours: 3)),
-    ),
-    Request(
-      id: '3',
-      title: 'Orden de compra #42',
-      description: 'Compra de equipos de cómputo',
-      status: RequestStatus.pendiente,
-      createdAt: DateTime.now().subtract(const Duration(hours: 5)),
-    ),
-  ];
+  final _requestService = RequestService();
+  final _authService = AuthService();
 
   @override
   Widget build(BuildContext context) {
@@ -44,28 +23,51 @@ class _ApprovalInboxScreenState extends State<ApprovalInboxScreen> {
         backgroundColor: AppColors.primary,
         foregroundColor: Colors.white,
         elevation: 0,
-        title: Column(
+        title: const Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
+            Text(
               'Por revisar',
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             Text(
-              '${_pending.length} documentos pendientes',
-              style: const TextStyle(fontSize: 12, color: Colors.white70),
+              'Documentos pendientes',
+              style: TextStyle(fontSize: 12, color: Colors.white70),
             ),
           ],
         ),
         actions: [
           IconButton(
             icon: const Icon(Icons.logout),
-            onPressed: () => context.go('/login'),
+            onPressed: () async {
+              await _authService.logout();
+              if (mounted) context.go('/login');
+            },
           ),
         ],
       ),
-      body: _pending.isEmpty
-          ? const Center(
+      body: StreamBuilder<List<Request>>(
+        stream: _requestService.getPendingRequests(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(
+              child: CircularProgressIndicator(color: AppColors.primary),
+            );
+          }
+
+          if (snapshot.hasError) {
+            return Center(
+              child: Text(
+                'Error: ${snapshot.error}',
+                style: const TextStyle(color: AppColors.rejected),
+              ),
+            );
+          }
+
+          final requests = snapshot.data ?? [];
+
+          if (requests.isEmpty) {
+            return const Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
@@ -81,18 +83,22 @@ class _ApprovalInboxScreenState extends State<ApprovalInboxScreen> {
                   ),
                 ],
               ),
-            )
-          : ListView.builder(
-              padding: const EdgeInsets.all(16),
-              itemCount: _pending.length,
-              itemBuilder: (context, index) {
-                final request = _pending[index];
-                return _ApprovalCard(
-                  request: request,
-                  onTap: () => context.go('/approvals/review/${request.id}'),
-                );
-              },
-            ),
+            );
+          }
+
+          return ListView.builder(
+            padding: const EdgeInsets.all(16),
+            itemCount: requests.length,
+            itemBuilder: (context, index) {
+              final request = requests[index];
+              return _ApprovalCard(
+                request: request,
+                onTap: () => context.go('/approvals/review/${request.id}'),
+              );
+            },
+          );
+        },
+      ),
     );
   }
 }
@@ -124,7 +130,6 @@ class _ApprovalCard extends StatelessWidget {
           padding: const EdgeInsets.all(16),
           child: Row(
             children: [
-              // Avatar inicial
               Container(
                 width: 44,
                 height: 44,
@@ -144,8 +149,6 @@ class _ApprovalCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 14),
-
-              // Título y descripción
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -179,21 +182,16 @@ class _ApprovalCard extends StatelessWidget {
                   ],
                 ),
               ),
-
-              // Badge pendiente + flecha
               Column(
                 children: [
                   Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 4,
-                    ),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(
                       color: AppColors.pending.withOpacity(0.1),
                       borderRadius: BorderRadius.circular(20),
-                      border: Border.all(
-                        color: AppColors.pending.withOpacity(0.3),
-                      ),
+                      border:
+                          Border.all(color: AppColors.pending.withOpacity(0.3)),
                     ),
                     child: const Text(
                       'Pendiente',
@@ -205,10 +203,8 @@ class _ApprovalCard extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 8),
-                  const Icon(
-                    Icons.chevron_right,
-                    color: AppColors.textSecondary,
-                  ),
+                  const Icon(Icons.chevron_right,
+                      color: AppColors.textSecondary),
                 ],
               ),
             ],

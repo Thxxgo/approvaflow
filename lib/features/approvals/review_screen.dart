@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../app/app_colors.dart';
+import '../requests/request_service.dart';
 
 class ReviewScreen extends StatefulWidget {
   final String requestId;
@@ -13,9 +14,22 @@ class ReviewScreen extends StatefulWidget {
 
 class _ReviewScreenState extends State<ReviewScreen> {
   final _commentController = TextEditingController();
+  final _requestService = RequestService();
   bool _isLoading = false;
+  Request? _request;
 
-  void _submitDecision(bool approved) {
+  @override
+  void initState() {
+    super.initState();
+    _loadRequest();
+  }
+
+  void _loadRequest() async {
+    final request = await _requestService.getRequestById(widget.requestId);
+    if (mounted) setState(() => _request = request);
+  }
+
+  void _submitDecision(bool approved) async {
     if (_commentController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -28,17 +42,35 @@ class _ReviewScreenState extends State<ReviewScreen> {
 
     setState(() => _isLoading = true);
 
-    Future.delayed(const Duration(seconds: 1), () {
-      setState(() => _isLoading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content:
-              Text(approved ? 'Documento aprobado' : 'Documento rechazado'),
-          backgroundColor: approved ? AppColors.approved : AppColors.rejected,
-        ),
+    try {
+      await _requestService.updateRequestStatus(
+        requestId: widget.requestId,
+        status: approved ? RequestStatus.aprobado : RequestStatus.rechazado,
+        comentario: _commentController.text.trim(),
       );
-      context.go('/approvals');
-    });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content:
+                Text(approved ? 'Documento aprobado' : 'Documento rechazado'),
+            backgroundColor: approved ? AppColors.approved : AppColors.rejected,
+          ),
+        );
+        context.go('/approvals');
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: $e'),
+            backgroundColor: AppColors.rejected,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   @override
@@ -49,6 +81,14 @@ class _ReviewScreenState extends State<ReviewScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (_request == null) {
+      return const Scaffold(
+        body: Center(
+          child: CircularProgressIndicator(color: AppColors.primary),
+        ),
+      );
+    }
+
     return Scaffold(
       backgroundColor: AppColors.surface,
       appBar: AppBar(
@@ -65,7 +105,6 @@ class _ReviewScreenState extends State<ReviewScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Info del documento
             Card(
               color: AppColors.background,
               shape: RoundedRectangleBorder(
@@ -77,112 +116,27 @@ class _ReviewScreenState extends State<ReviewScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      'Solicitud de viaje',
-                      style: TextStyle(
+                    Text(
+                      _request!.title,
+                      style: const TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
                         color: AppColors.textPrimary,
                       ),
                     ),
                     const SizedBox(height: 8),
-                    const Text(
-                      'Tiquetes para reunión en Bogotá el 28 de abril',
-                      style: TextStyle(
+                    Text(
+                      _request!.description,
+                      style: const TextStyle(
                         color: AppColors.textSecondary,
                         fontSize: 14,
                       ),
                     ),
-                    const SizedBox(height: 16),
-                    Row(
-                      children: [
-                        const Icon(
-                          Icons.person_outline,
-                          size: 16,
-                          color: AppColors.textSecondary,
-                        ),
-                        const SizedBox(width: 6),
-                        const Text(
-                          'Carlos Arango',
-                          style: TextStyle(
-                            color: AppColors.textSecondary,
-                            fontSize: 13,
-                          ),
-                        ),
-                      ],
-                    ),
                   ],
                 ),
               ),
             ),
-
             const SizedBox(height: 12),
-
-            // Visor de documento (placeholder)
-            Card(
-              color: AppColors.background,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-              elevation: 1,
-              child: Padding(
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    const Text(
-                      'Documento adjunto',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.textPrimary,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    Container(
-                      height: 160,
-                      decoration: BoxDecoration(
-                        color: AppColors.surface,
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(
-                          color: AppColors.primary.withOpacity(0.2),
-                        ),
-                      ),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            Icons.picture_as_pdf_outlined,
-                            size: 48,
-                            color: AppColors.primary.withOpacity(0.5),
-                          ),
-                          const SizedBox(height: 8),
-                          const Text(
-                            'viaje_bogota.pdf',
-                            style: TextStyle(
-                              color: AppColors.textSecondary,
-                              fontSize: 13,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          const Text(
-                            'Visor disponible con Firebase Storage',
-                            style: TextStyle(
-                              color: AppColors.textSecondary,
-                              fontSize: 11,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 12),
-
-            // Comentario
             Card(
               color: AppColors.background,
               shape: RoundedRectangleBorder(
@@ -209,18 +163,15 @@ class _ReviewScreenState extends State<ReviewScreen> {
                       style: const TextStyle(color: AppColors.textPrimary),
                       decoration: InputDecoration(
                         hintText: 'Escribe tu observación...',
-                        hintStyle: const TextStyle(
-                          color: AppColors.textSecondary,
-                        ),
+                        hintStyle:
+                            const TextStyle(color: AppColors.textSecondary),
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(10),
                         ),
                         focusedBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(10),
                           borderSide: const BorderSide(
-                            color: AppColors.primary,
-                            width: 2,
-                          ),
+                              color: AppColors.primary, width: 2),
                         ),
                       ),
                     ),
@@ -228,10 +179,7 @@ class _ReviewScreenState extends State<ReviewScreen> {
                 ),
               ),
             ),
-
             const SizedBox(height: 24),
-
-            // Botones de decisión
             Row(
               children: [
                 Expanded(

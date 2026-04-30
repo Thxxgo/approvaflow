@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../app/app_colors.dart';
+import 'auth_service.dart';
 
 class AuthScreen extends StatefulWidget {
   const AuthScreen({super.key});
@@ -12,22 +13,57 @@ class AuthScreen extends StatefulWidget {
 class _AuthScreenState extends State<AuthScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+  final _authService = AuthService();
   bool _isLoading = false;
+  bool _isRegisterMode = false;
+  UserRole _selectedRole = UserRole.solicitante;
 
-  void _login() {
+  void _submit() async {
     final email = _emailController.text.trim();
+    final password = _passwordController.text.trim();
+
+    if (email.isEmpty || password.isEmpty) {
+      _showError('Por favor completa todos los campos');
+      return;
+    }
 
     setState(() => _isLoading = true);
 
-    Future.delayed(const Duration(seconds: 1), () {
-      setState(() => _isLoading = false);
-
-      if (email.contains('aprobador')) {
-        context.go('/approvals');
+    try {
+      if (_isRegisterMode) {
+        await _authService.register(
+          email: email,
+          password: password,
+          role: _selectedRole,
+        );
       } else {
-        context.go('/requests');
+        await _authService.login(email, password);
       }
-    });
+
+      final user = _authService.currentUser;
+      if (user == null) return;
+
+      final role = await _authService.getUserRole(user.uid);
+
+      if (mounted) {
+        role == UserRole.aprobador
+            ? context.go('/approvals')
+            : context.go('/requests');
+      }
+    } on Exception catch (e) {
+      _showError(e.toString());
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  void _showError(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: AppColors.rejected,
+      ),
+    );
   }
 
   @override
@@ -47,7 +83,6 @@ class _AuthScreenState extends State<AuthScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // Logo / título
               const Icon(
                 Icons.verified_user_rounded,
                 size: 64,
@@ -64,14 +99,9 @@ class _AuthScreenState extends State<AuthScreen> {
               ),
               const Text(
                 'Aprobaciones sin fricción',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Colors.white60,
-                ),
+                style: TextStyle(fontSize: 14, color: Colors.white60),
               ),
               const SizedBox(height: 48),
-
-              // Card del formulario
               Card(
                 color: AppColors.background,
                 shape: RoundedRectangleBorder(
@@ -83,8 +113,8 @@ class _AuthScreenState extends State<AuthScreen> {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       Text(
-                        'Iniciar sesión',
-                        style: TextStyle(
+                        _isRegisterMode ? 'Registrarse' : 'Iniciar sesión',
+                        style: const TextStyle(
                           fontSize: 20,
                           fontWeight: FontWeight.bold,
                           color: AppColors.textPrimary,
@@ -92,59 +122,88 @@ class _AuthScreenState extends State<AuthScreen> {
                       ),
                       const SizedBox(height: 24),
 
-                      // Campo email
+                      // Email
                       TextField(
                         controller: _emailController,
                         keyboardType: TextInputType.emailAddress,
                         style: const TextStyle(color: AppColors.textPrimary),
                         decoration: InputDecoration(
                           labelText: 'Correo electrónico',
-                          prefixIcon: const Icon(
-                            Icons.email_outlined,
-                            color: AppColors.primary,
-                          ),
+                          prefixIcon: const Icon(Icons.email_outlined,
+                              color: AppColors.primary),
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(10),
                           ),
                           focusedBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(10),
                             borderSide: const BorderSide(
-                              color: AppColors.primary,
-                              width: 2,
-                            ),
+                                color: AppColors.primary, width: 2),
                           ),
                         ),
                       ),
                       const SizedBox(height: 16),
 
-                      // Campo contraseña
+                      // Contraseña
                       TextField(
                         controller: _passwordController,
                         obscureText: true,
                         style: const TextStyle(color: AppColors.textPrimary),
                         decoration: InputDecoration(
                           labelText: 'Contraseña',
-                          prefixIcon: const Icon(
-                            Icons.lock_outlined,
-                            color: AppColors.primary,
-                          ),
+                          prefixIcon: const Icon(Icons.lock_outlined,
+                              color: AppColors.primary),
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(10),
                           ),
                           focusedBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(10),
                             borderSide: const BorderSide(
-                              color: AppColors.primary,
-                              width: 2,
-                            ),
+                                color: AppColors.primary, width: 2),
                           ),
                         ),
                       ),
+
+                      // Selector de rol (solo en registro)
+                      if (_isRegisterMode) ...[
+                        const SizedBox(height: 16),
+                        DropdownButtonFormField<UserRole>(
+                          value: _selectedRole,
+                          decoration: InputDecoration(
+                            labelText: 'Rol',
+                            prefixIcon: const Icon(Icons.badge_outlined,
+                                color: AppColors.primary),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                              borderSide: const BorderSide(
+                                  color: AppColors.primary, width: 2),
+                            ),
+                          ),
+                          items: const [
+                            DropdownMenuItem(
+                              value: UserRole.solicitante,
+                              child: Text('Solicitante'),
+                            ),
+                            DropdownMenuItem(
+                              value: UserRole.aprobador,
+                              child: Text('Aprobador'),
+                            ),
+                          ],
+                          onChanged: (value) {
+                            if (value != null) {
+                              setState(() => _selectedRole = value);
+                            }
+                          },
+                        ),
+                      ],
+
                       const SizedBox(height: 24),
 
-                      // Botón login
+                      // Botón principal
                       ElevatedButton(
-                        onPressed: _isLoading ? null : _login,
+                        onPressed: _isLoading ? null : _submit,
                         style: ElevatedButton.styleFrom(
                           backgroundColor: AppColors.primary,
                           foregroundColor: Colors.white,
@@ -162,22 +221,31 @@ class _AuthScreenState extends State<AuthScreen> {
                                   strokeWidth: 2,
                                 ),
                               )
-                            : const Text(
-                                'Iniciar sesión',
-                                style: TextStyle(fontSize: 16),
+                            : Text(
+                                _isRegisterMode
+                                    ? 'Crear cuenta'
+                                    : 'Iniciar sesión',
+                                style: const TextStyle(fontSize: 16),
                               ),
+                      ),
+
+                      const SizedBox(height: 12),
+
+                      // Cambiar entre login y registro
+                      TextButton(
+                        onPressed: () {
+                          setState(() => _isRegisterMode = !_isRegisterMode);
+                        },
+                        child: Text(
+                          _isRegisterMode
+                              ? '¿Ya tienes cuenta? Inicia sesión'
+                              : '¿No tienes cuenta? Regístrate',
+                          style: const TextStyle(color: AppColors.primary),
+                        ),
                       ),
                     ],
                   ),
                 ),
-              ),
-
-              // Hint de prueba
-              const SizedBox(height: 24),
-              const Text(
-                'Prueba: usa "aprobador@test.com" para entrar como aprobador',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.white38, fontSize: 12),
               ),
             ],
           ),

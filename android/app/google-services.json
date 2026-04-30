@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1022267311522",
+    "project_id": "approvaflow-f691a",
+    "storage_bucket": "approvaflow-f691a.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1022267311522:android:e63ef3d5fd87d88e8a5efb",
+        "android_client_info": {
+          "package_name": "com.example.approvaflow"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDbXuy48O0hMhH7Xrg-8QA4HOOOvixPWhY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

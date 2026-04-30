@@ -1,25 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../app/app_colors.dart';
-
-// Modelo simple de solicitud (por ahora sin Firebase)
-class Request {
-  final String id;
-  final String title;
-  final String description;
-  final RequestStatus status;
-  final DateTime createdAt;
-
-  Request({
-    required this.id,
-    required this.title,
-    required this.description,
-    required this.status,
-    required this.createdAt,
-  });
-}
-
-enum RequestStatus { pendiente, aprobado, rechazado }
+import 'request_service.dart';
+import '../auth/auth_service.dart';
 
 class RequestListScreen extends StatefulWidget {
   const RequestListScreen({super.key});
@@ -29,29 +12,8 @@ class RequestListScreen extends StatefulWidget {
 }
 
 class _RequestListScreenState extends State<RequestListScreen> {
-  final List<Request> _requests = [
-    Request(
-      id: '1',
-      title: 'Orden de compra #41',
-      description: 'Compra de materiales de oficina',
-      status: RequestStatus.aprobado,
-      createdAt: DateTime.now().subtract(const Duration(days: 2)),
-    ),
-    Request(
-      id: '2',
-      title: 'Solicitud de viaje',
-      description: 'Tiquetes para reunión en Bogotá',
-      status: RequestStatus.pendiente,
-      createdAt: DateTime.now().subtract(const Duration(hours: 1)),
-    ),
-    Request(
-      id: '3',
-      title: 'Informe mensual',
-      description: 'Informe de ventas marzo 2025',
-      status: RequestStatus.rechazado,
-      createdAt: DateTime.now().subtract(const Duration(days: 5)),
-    ),
-  ];
+  final _requestService = RequestService();
+  final _authService = AuthService();
 
   @override
   Widget build(BuildContext context) {
@@ -69,7 +31,7 @@ class _RequestListScreenState extends State<RequestListScreen> {
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             Text(
-              'Hola, Carlos',
+              'Bienvenido',
               style: TextStyle(fontSize: 12, color: Colors.white70),
             ),
           ],
@@ -77,36 +39,59 @@ class _RequestListScreenState extends State<RequestListScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.logout),
-            onPressed: () => context.go('/login'),
+            onPressed: () async {
+              await _authService.logout();
+              if (mounted) context.go('/login');
+            },
           ),
         ],
       ),
-      body: _requests.isEmpty
-          ? Center(
+      body: StreamBuilder<List<Request>>(
+        stream: _requestService.getMyRequests(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(
+              child: CircularProgressIndicator(color: AppColors.primary),
+            );
+          }
+
+          if (snapshot.hasError) {
+            return Center(
+              child: Text(
+                'Error: ${snapshot.error}',
+                style: const TextStyle(color: AppColors.rejected),
+              ),
+            );
+          }
+
+          final requests = snapshot.data ?? [];
+
+          if (requests.isEmpty) {
+            return const Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(
-                    Icons.inbox_outlined,
-                    size: 64,
-                    color: AppColors.textSecondary,
-                  ),
-                  const SizedBox(height: 16),
+                  Icon(Icons.inbox_outlined,
+                      size: 64, color: AppColors.textSecondary),
+                  SizedBox(height: 16),
                   Text(
                     'No tienes solicitudes aún',
                     style: TextStyle(color: AppColors.textSecondary),
                   ),
                 ],
               ),
-            )
-          : ListView.builder(
-              padding: const EdgeInsets.all(16),
-              itemCount: _requests.length,
-              itemBuilder: (context, index) {
-                final request = _requests[index];
-                return _RequestCard(request: request);
-              },
-            ),
+            );
+          }
+
+          return ListView.builder(
+            padding: const EdgeInsets.all(16),
+            itemCount: requests.length,
+            itemBuilder: (context, index) {
+              return _RequestCard(request: requests[index]);
+            },
+          );
+        },
+      ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => context.go('/requests/new'),
         backgroundColor: AppColors.primary,
@@ -134,7 +119,6 @@ class _RequestCard extends StatelessWidget {
         padding: const EdgeInsets.all(16),
         child: Row(
           children: [
-            // Ícono de estado
             Container(
               width: 48,
               height: 48,
@@ -148,8 +132,6 @@ class _RequestCard extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 14),
-
-            // Título y descripción
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -170,12 +152,32 @@ class _RequestCard extends StatelessWidget {
                       fontSize: 13,
                     ),
                   ),
+                  if (request.comentario != null) ...[
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        const Icon(Icons.comment_outlined,
+                            size: 12, color: AppColors.textSecondary),
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: Text(
+                            request.comentario!,
+                            style: const TextStyle(
+                              color: AppColors.textSecondary,
+                              fontSize: 12,
+                              fontStyle: FontStyle.italic,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                 ],
               ),
             ),
             const SizedBox(width: 10),
-
-            // Badge de estado
             _StatusBadge(status: request.status),
           ],
         ),
